@@ -5,4 +5,8 @@ It allows to compute the absorption corrected for loading at a custom time step,
 
 Ideally one can reconstruct also the Attenuation from the instrumental raw count.
 
-The code is in R
+Currently the code is applied to 1 minute data and recomputes the corrected absorption at 5 minute intervals.
+
+There are several hard coded parameters which can be changed: the ATN lower and upper limit for FVRF estimate, the Cref and the Mass Absorption Coefficient.
+
+How to use it: firstly set your favourite parameters, then load the function dualspot.compensed.bc (at the end of the script) and finally compute the data average at your custom time step.
