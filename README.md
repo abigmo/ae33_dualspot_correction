@@ -22,6 +22,6 @@ If `ae33_dualspot_correction` was useful for your research, please cite the dedi
 
 **References**
 
-Bigi, A., Veratti, G., Andrews, E., Collaud Coen, M., Guerrieri, L., Bernardoni, V., Massabò, D., Ferrero, L., Teggi, S., Ghermandi, G: Black Carbon and Brown Carbon absorption by in-situ filter-based photometer and ground-based sun-photometer in a Po valley urban atmosphere. EGUSphere, 
+Bigi, A., Veratti, G., Andrews, E., Collaud Coen, M., Guerrieri, L., Bernardoni, V., Massabò, D., Ferrero, L., Teggi, S., Ghermandi, G: Black Carbon and Brown Carbon absorption by in-situ filter-based photometer and ground-based sun-photometer in a Po valley urban atmosphere. Atmos. Chem. Phys., XX, XXX, https://doi.org/, 2023.
 
 Drinovec, L., Močnik, G., Zotter, P., Prévôt, A. S. H., Ruckstuhl, C., Coz, E., Rupakheti, M., Sciare, J., Müller, T., Wiedensohler, A., and Hansen, A. D. A.: The "dual-spot" Aethalometer: an improved measurement of aerosol black carbon with real-time loading compensation, Atmos. Meas. Tech., 8, 1965–1979, https://doi.org/10.5194/amt-8-1965-2015, 2015.
