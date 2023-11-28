@@ -1,4 +1,4 @@
-# ae33_dualspot_correction
+# AE33 Dual-spot correction algorithm for R
 Transcription of the Aethalometer AE33 Dual-spot® correction (Drinovec et al., 2015) in R programming language and its application to MicroAethalometers MA200 (Aethlabs, San Francisco, USA) with Firmware v1.4.
 The code is released alongside a scientific article Bigi et al. (2023). It allows to compute the absorption corrected for filter loading at a custom time step, starting from the raw Attenuation provided by the instrument.
 
