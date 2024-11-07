@@ -11,6 +11,7 @@ library(dplyr)
 library(magrittr)
 library(tidyr)
 library(Rfast)
+library(lubridate) 
 
 ### start getting the data from here ### 
 input <- ma201
@@ -86,7 +87,8 @@ end.var <- c("date",
 
 a <- input %>%
     dplyr::select(all_of(ave.var)) %>%
-    mutate("time.ave" = as.POSIXct(floor ( as.numeric( date - 60 ) / 60 / 5) * 5 * 60, origin = "1970-01-01") + 60 * 5) %>% ## in this case we find to which '5 minute slot' each observation belongs
+    mutate("time.ave" = lubridate::floor_date(date, "min")) %>% ## time stamps are reported at the end of the measurement. Get the start time of each measurement to eventually group measurement together (if you want to compute BC at different timestep of the experimental sampling time)
+## old code, not using lubridate: it works fine, it's just slightly more tricky to handle  ## mutate("time.ave" = as.POSIXct(floor ( as.numeric( date - 60 ) / 60 / 5) * 5 * 60, origin = "1970-01-01") + 60 * 5) %>% ## in this case we find to which '5 minute slot' each observation belongs
     group_by(time.ave) %>% ## group the data according to this variable, i.e. for dates rounded to 5 minutes
     summarise_if(.predicate = function(x) is.numeric(x),
                  .funs = ~ quantile(x = ., probs = 0.5, na.rm = TRUE)) %>% 
@@ -96,7 +98,8 @@ a <- input %>%
 
 b <- input %>%
     dplyr::select(all_of(end.var)) %>%
-    mutate("time.ave" = as.POSIXct(floor ( as.numeric( date - 60 ) / 60 / 5) * 5 * 60, origin = "1970-01-01") + 60 * 5) %>% ## in this case we find to which '5 minute slot' each observation belongs
+    mutate("time.ave" = lubridate::floor_date(date, "min")) %>% ## time stamps are reported at the end of the measurement. Get the start time of each measurement to eventually group measurement together (if you want to compute BC at different timestep of the experimental sampling time)
+    ## mutate("time.ave" = as.POSIXct(floor ( as.numeric( date - 60 ) / 60 / 5) * 5 * 60, origin = "1970-01-01") + 60 * 5) %>% ## in this case we find to which '5 minute slot' each observation belongs
     group_by(time.ave) %>% ## group the data according to this variable, i.e. for dates rounded to 5 minutes
     summarise_all(, .funs = ~ last(.)) %>%
     mutate(date = as.POSIXct(time.ave, tz = "UTC")) %>%
@@ -107,7 +110,7 @@ b <- input %>%
 input <- merge(a,b, by = "date")
 rm(a, b, end.var, ave.var)
 
-## update the timebase
+## update the timebase if needed
 input$Timebase..s. <- 300
 
 ## compute the attenuation coefficient [Mm-1]
@@ -123,17 +126,19 @@ input <- input %>%
 ## estimate of FVRF (flow velocity ratio factor), using also fig S6
 ## ATN lower and upper limit for FVRF estimate
 ## this should be roughly independent of wavelengths
-atn.f1 <- 5
-atn.f2 <- 25
+## Chakrabarty et al, 2023 AMT suggests 15 and 30
+## AE33 by default should have 10 and 30
+atn.f1 <- 15
+atn.f2 <- 30
 
 bla <- input %>%
     split(., f = input$Session.ID) %>%
-    lapply(., function(x) dualspot.compensed.bc(x, atn.f1 = 5, atn.f2 = 25)) ## this is the core function for dual spot correction
+    lapply(., function(x) dualspot.compensed.bc(x, atn.f1 = 15, atn.f2 = 30)) ## this is the core function for dual spot correction
 
 output <- do.call(rbind.data.frame, bla)
 
 
-dualspot.compensed.bc <- function(data, atn.f1, atn.f2) {
+dualspot.compensed.bc <- function(data, atn.f1 = 10, atn.f2 = 30) {
 
     wv <- c("UV" = 375, "Blue" = 470, "Green"= 528, "Red" = 625, "IR" = 880) ## communicated by Aethlabs
     c.ref <- 1.3 ## communicated by Aethlabs
@@ -161,7 +166,7 @@ dualspot.compensed.bc <- function(data, atn.f1, atn.f2) {
     }
 
     ## function to weigh the K according to Drinovec 
-    k.weight <- function(k.old, atn.ta, atn.f2 = 15, atn1, k){
+    k.weight <- function(k.old, atn.ta, atn.f2 = 30, atn1, k){
 
         ## applying Drinovec Supplement lines 170, 174
         out <- ((atn.ta - atn1) * k.old + (atn1 - atn.f2) * k) / (atn.ta - atn.f2) 
@@ -178,7 +183,7 @@ dualspot.compensed.bc <- function(data, atn.f1, atn.f2) {
 
         ## this is the intercept
         f1 <- lapply(dd, function(x) {
-            y <- x[which(x[ , names(x) %in% a1] > atn.f1 & x[ , names(x) %in% a2] < 25), ] ## select the ATN1 within the limits atn.f1 and atn.f2
+            y <- x[which(x[ , names(x) %in% a1] > atn.f1 & x[ , names(x) %in% a2] < atn.f2), ] ## select the ATN1 within the limits atn.f1 and atn.f2
             f1 <- lm( c( y[ , names(y) %in% a2] / y[ ,names(y) %in% a1] ) ~ y[ , names(y) %in% a1] )$coefficients[1] ## slope of the linear regression between ATN2 / ATN1 ~ ATN1 (within the range atn.f1 and atn.f2)
         }) %>%
             unlist()
@@ -230,10 +235,10 @@ dualspot.compensed.bc <- function(data, atn.f1, atn.f2) {
                 mutate("{w}.K.ae33" := mapply(k.unw.estimate, f1 = Flow1..mL.min., f2 = Flow2..mL.min., atn1 = get(l1), atn2 = get(l2), fvrf = fvrf) ) %>% ## compute the unweighted K (Drinovec et al. eq.10)
                 mutate("{w}.K.ae33" := k.weight(k.old = ifelse(!is.na(k.old.w), k.old.w, mean( tail( get(paste0(w, ".K.ae33")), 10))), ## compute the weighted K (Drinovec et al. eq.13)
                                                 atn.ta = max( get(l1), na.rm = TRUE),
-                                                atn.f2 = 10,
+                                                atn.f2 = atn.f2,
                                                 atn1 = get(l1),
                                                 k = get(paste0(w, ".K.ae33")) )) %>%
-                mutate( "{w}.BCc":= get(paste0(w, ".ATN1_batn")) / c.ref / sigma / (1 - get(paste0(w, ".K.ae33")) * get(l1)) * 1000 ) ## BC corrected in µg/m³
+                mutate( "{w}.BCc.ae33":= get(paste0(w, ".ATN1_batn")) / c.ref / sigma / (1 - get(paste0(w, ".K.ae33")) * get(l1)) * 1000 ) ## BC corrected in µg/m³
 
             ## update the value in the k.old for the following spot
             ## using the mean of the last 10 values of K (e.g. 50 minutes)  
