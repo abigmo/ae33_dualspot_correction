@@ -106,6 +106,9 @@ b <- input %>%
     dplyr::select(all_of(end.var)) %>%
     as.data.frame()
 
+## ATN by Aethlabs is computed as
+## -100 * log(input$w.Sen / input$w.Ref) + 100*log(input$w.Sen[1]/input$w.Ref[1]) ## ATN from eq. 1 in Drinovec et al, reported as variation compared to the sensor count at the start of the measurement (which ideally it should be a new spot)
+
 ## merge the two datasets
 input <- merge(a,b, by = "date")
 rm(a, b, end.var, ave.var)
@@ -116,7 +119,7 @@ input$Timebase..s. <- 300
 ## compute the attenuation coefficient [Mm-1]
 ## using Drinovec et al. eq. 15, eq. 16
 ## from the ATN by aethlabs at raw timebase. 10^6 converts to ng/g. 10^6 converts from m-1 to Mm-1
-## this is the not-corrected attenuation coeff which, multiplied by sigma, leads to BC_not_corrected (so it corresponds as BC_NC in Drinovec et al.)
+## this is the not-corrected attenuation coeff which, multiplied by sigma, leads to BC_not_corrected (so it corresponds as BC_NC in eq. 7 of Drinovec et al.)
 input <- input %>%
     mutate_at( dplyr::vars(ends_with("ATN1")), .funs =  list( `batn` = function(x, flow, time) {
         c( diff(x), diff(x)[1] ) / 100 * 0.71*1E-5 / (flow / 10^6) / (time / 60) * 10^6 }), ## [time] is [s] and is / by 60 to convert it to min. flow is [ml/min] it's "/10^6" to take it to [m3/min], last 10^6 is to convert to Mm-1
@@ -138,7 +141,7 @@ bla <- input %>%
 output <- do.call(rbind.data.frame, bla)
 
 
-dualspot.compensed.bc <- function(data, atn.f1 = 10, atn.f2 = 30) {
+dualspot.ae33.bc <- function(data, atn.f1, atn.f2) {
 
     wv <- c("UV" = 375, "Blue" = 470, "Green"= 528, "Red" = 625, "IR" = 880) ## communicated by Aethlabs
     c.ref <- 1.3 ## communicated by Aethlabs
@@ -154,6 +157,11 @@ dualspot.compensed.bc <- function(data, atn.f1 = 10, atn.f2 = 30) {
         k <- k[!(k * atn1 > 1)]
 
         ## compute equation 10 Drinovec AMT 2015
+        ## if FVRF is NA, then there is no need of the correction (no loading, ATN is very low)
+        if (is.na(fvrf) == TRUE) {
+            k.min  <- 0 
+            return(k.min)
+        }
         y <- abs(f2 / f1 * fvrf - log(1 - k * atn2) / log(1 - k * atn1))
 
         ## get the minimum y
@@ -166,7 +174,7 @@ dualspot.compensed.bc <- function(data, atn.f1 = 10, atn.f2 = 30) {
     }
 
     ## function to weigh the K according to Drinovec 
-    k.weight <- function(k.old, atn.ta, atn.f2 = 30, atn1, k){
+    k.weight <- function(k.old, atn.ta, atn.f2, atn1, k){
 
         ## applying Drinovec Supplement lines 170, 174
         out <- ((atn.ta - atn1) * k.old + (atn1 - atn.f2) * k) / (atn.ta - atn.f2) 
@@ -183,8 +191,16 @@ dualspot.compensed.bc <- function(data, atn.f1 = 10, atn.f2 = 30) {
 
         ## this is the intercept
         f1 <- lapply(dd, function(x) {
+
             y <- x[which(x[ , names(x) %in% a1] > atn.f1 & x[ , names(x) %in% a2] < atn.f2), ] ## select the ATN1 within the limits atn.f1 and atn.f2
-            f1 <- lm( c( y[ , names(y) %in% a2] / y[ ,names(y) %in% a1] ) ~ y[ , names(y) %in% a1] )$coefficients[1] ## slope of the linear regression between ATN2 / ATN1 ~ ATN1 (within the range atn.f1 and atn.f2)
+
+            if (sum(complete.cases(y)) == 0) {
+                message(paste0("Warning: for ", w, " there is no ATN between ", atn.f1, " and ", atn.f2, " for spot ", unique(x$Tape.position), " and Session ", unique(x$Session.ID), ". Probably ATN is very low. K will be set to zero"))
+                f1 <- NA
+            } 
+            
+            if (sum(complete.cases(y)) != 0) f1 <- lm( c( y[ , names(y) %in% a2] / y[ ,names(y) %in% a1] ) ~ y[ , names(y) %in% a1] )$coefficients[1] ## slope of the linear regression between ATN2 / ATN1 ~ ATN1 (within the range atn.f1 and atn.f2)
+            return(f1)
         }) %>%
             unlist()
 
